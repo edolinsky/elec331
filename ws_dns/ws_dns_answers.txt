@@ -1,0 +1,111 @@
+#ELEC 331 Wireshark DNS Lab
+
+1. Run nslookup to obtain the IP address of a Web server in Asia. What is the IP
+address of that server?
+www.japan.go.jp has IPv4 address of 202.32.211.142 and
+IPv6 address of 2001:240:177:21::14.
+
+2. Run nslookup to determine the authoritative DNS servers for a university in
+Europe.
+The authoritative DNS server for www.ethz.ch (ETH Zurich) is dummy-ne.ethz.ch.
+
+3. Run nslookup so that one of the DNS servers obtained in Question 2 is queried
+for the mail servers for Yahoo! mail. What is its IP address?
+The IP address of the DNS server is 129.132.243.94, but the lookup for the
+yahoo mailserver times out. However, by using mail.yahoo.com as a DNS server,
+I found its IP address to be 98.136.189.41.
+
+4. Locate the DNS query and response messages. Are then sent over UDP or TCP?
+The DNS query and response messages are sent over UDP.
+
+5. What is the destination port for the DNS query message? What is the source
+port of DNS response message?
+The destination and source port of the DNS query message and response message
+(respectively) is 53.
+
+6. To what IP address is the DNS query message sent? Use ipconfig to determine
+the IP address of your local DNS server. Are these two IP addresses the same?
+The DNS query message is sent to 128.238.29.23, while the IP address of my local
+DNS server is 10.0.0.1 (my home router). However, I am using the provided packet
+traces for this part of the lab, and these two IP addresses would both be
+10.0.0.1 in the case that I traced this DNS query myself.
+
+7. Examine the DNS query message. What “Type” of DNS query is it? Does the
+query message contain any “answers”?
+The DNS query is of 'Standard' type, and does not contain any "answers".
+
+8. Examine the DNS response message. How many “answers” are provided? What
+do each of these answers contain?
+Two answers are provided, containing two different type A, class IN IP addresses
+for www.ietf.org (132.151.6.75 and 65.246.255.51).
+
+9. Consider the subsequent TCP SYN packet sent by your host. Does the
+destination IP address of the SYN packet correspond to any of the IP addresses
+provided in the DNS response message?
+Yes, the destination IP address of the SYN packet corresponds to the first
+address provided in the DNS response message.
+
+10. This web page contains images. Before retrieving each image, does your host
+issue new DNS queries?
+No, the host does not issue new DNS queries before retrieving each image.
+
+11. What is the destination port for the DNS query message? What is the source
+port of DNS response message?
+The destination port for the DNS query message and the source port of the DNS
+response message is 53.
+
+12. To what IP address is the DNS query message sent? Is this the IP address of
+your default local DNS server?
+The DNS query message is sent to 128.238.29.22. This would be the IP address of
+my default local DNS server, as I am using the provided packet traces here. In
+my case, the address would be 10.0.0.1.
+
+13. Examine the DNS query message. What “Type” of DNS query is it? Does the
+query message contain any “answers”?
+The DNS query is of 'Standard' type, and does not contain any Answers.
+
+14. Examine the DNS response message. How many “answers” are provided? What
+do each of these answers contain?
+One answer is provided, containing the type A, class IN IP address of 18.7.22.83
+for www.mit.edu. A set of Authoritative nameservers and additional records is
+also provided.
+
+15. Provide a screenshot.
+
+16. To what IP address is the DNS query message sent? Is this the IP address of
+your default local DNS server?
+The DNS query message is sent to 128.238.29.22, the IP address of the user's
+default local DNS server (once again, I am using the provided traces).
+
+17. Examine the DNS query message. What “Type” of DNS query is it? Does the
+query message contain any “answers”?
+The query is of 'Standard' type, and the query message does not contain any
+answers.
+
+18. Examine the DNS response message. What MIT nameservers does the response
+message provide? Does this response message also provide the IP addresses of the
+MIT namesers?
+The MIT nameservers provided by the response message are as follows:
+  * bitsy.mit.edu
+  * strawb.mit.edu
+  *w20ns.mit.edu
+
+19. Provide a screenshot.
+
+20. To what IP address is the DNS query message sent? Is this the IP address of
+your default local DNS server? If not, what does the IP address correspond to?
+The DNS query message is sent to 18.72.0.3, which is not the IP address of the
+user's local DNS server, but the IP address of bitsy.mit.edu, the nameserver we
+requested in the nslookup command.
+
+21. Examine the DNS query message. What “Type” of DNS query is it? Does the
+query message contain any “answers”?
+The DNS query is of 'Standard' type, and does not contain any answers.
+
+22. Examine the DNS response message. How many “answers” are provided? What
+does each of these answers contain?
+One answer is included in the response, containing a type A, class IN IP address
+(218.36.94.200) for www.aiit.or.kr. The response also contains a list of
+authoritative nameservers and additional records for the requested domain.
+
+23. Provide a screenshot.
