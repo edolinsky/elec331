@@ -1,0 +1,95 @@
+# ELEC 331 Wireshark HTTP Lab
+
+1. Is your browser running HTTP version 1.0 or 1.1? What version of HTTP is the
+server running?
+My browser is running HTTP/1.1. The server is also running HTTP/1.1.
+
+2. What languages (if any) does your browser indicate that it can accept to the
+server?
+My browser indicates that it can accept either en-GB or en-US.
+
+3. What is the IP address of your computer? Of the gaia.cs.umass.edu server?
+The IP address of my computer is 10.0.0.14 (local), while the IP address of the
+gaia.cs.umass.edu server is 128.119.245.12.
+
+4. What is the status code returned from the server to your browser?
+The status code returned is '200 OK'.
+
+5. When was the HTML file that you are retrieving last modified at the server?
+The file was last modified on Tue, 07 Feb 2017 06:59:01 GMT.
+
+6. How many bytes of content are being returned to your browser?
+128 bytes of content are being returned to my browser.
+
+7. By inspecting the raw data in the packet content window, do you see any
+headers within the data that are not displayed in the packet-listing window? If
+so, name one.
+No, I do not see any headers within the data that are not displayed in the
+packet-listing window.
+
+8. Inspect the contents of the first HTTP GET request from your browser to the
+server. Do you see an "IF-MODIFIED-SINCE" line in the HTTP GET?
+No, there is not "IF-MODIFIED-SINCE" line in the HTTP GET.
+
+9. Inspect the contents of the server response. Did the server explicitly return
+the contents of the file? How can you tell?
+The server explicitly returned the contents of the file, as noted by the 200 OK
+status and the inclusion of the Line-based text data.
+
+10. Now inspect the contents of the second HTTP GET request from your browser to
+the server. Do you see an "IF-MODIFIED-SINCE:" line in the HTTP GET? If
+so, what information follows the "IF-MODIFIED-SINCE:" header?
+An "IF-MODIFIED-SINCE" line does exist in the GET request, followed by the
+Last-Modified date which was returned in the previous response (in this case,
+the date is Tue, 07 Feb 2017 06:59:01 GMT).
+
+11. What is the HTTP status code and phrase returned from the server in response
+to this second HTTP GET? Did the server explicitly return the contents of the
+file? Explain.
+The GTTP status code and phrase returned in response to this second request is
+"304 Not Modified". The server did not explicitly return the contents of the
+file, as the response of "Not Modified" lets the browser know that the contents
+that would be returned are exactly the same as those which are cached by the
+browser. The content has not been modified since before that particular
+timestamp.
+
+12. How many HTTP GET request messages did your browser send? Which packet
+number in the trace contains the GET message for the Bill or Rights?
+One HTTP GET request message was sent by my browser, corresponding to packet
+number 296 in my trace.
+
+13. Which packet number in the trace contains the status code and phrase associated
+with the response to the HTTP GET request?
+Packet number 310 contains the status code and phrase associated with the
+response to the HTTP GET request.
+
+14. What is the status code and phrase in the response?
+The status code and phrase in the response is '200 OK'.
+
+15. How many data-containing TCP segments were needed to carry the single HTTP
+response and the text of the Bill of Rights?
+Four data-containing TCP segments were needed to carry the single HTTP response
+and text of the Bill of Rights, three of size 1460 bytes each, and the fourth
+481 bytes.
+
+16. How many HTTP GET request messages did your browser send? To which
+Internet addresses were these GET requests sent?
+Although I traced some extra packets, there were 4 HTTP GET requests (as one the
+requests for the .jpg image came back with a 304 response) sent to the
+following addresses:
+  * 128.119.245.12
+  * 128.119.240.90
+
+17. Can you tell whether your browser downloaded the two images serially, or
+whether they were downloaded from the two web sites in parallel? Explain.
+The two images were downloaded serially, as they were transmitted over 2 TCP 
+connections. We know this because the two packets used two different TCP ports.
+
+18. What is the server’s response (status code and phrase) in response to the
+initial HTTP GET message from your browser?
+The server's response to the initial HTTP GET message is '401 Unauthorized'
+
+19. When your browser sends the HTTP GET message for the second time, what
+new field is included in the HTTP GET message?
+When the browser sends the second HTTP GET message, the new field
+"Authorization: Basic d2lyZXNoYXJrLXN0dWRlbnRzOm5ldHdvcms=" is included.
