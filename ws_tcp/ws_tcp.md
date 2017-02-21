@@ -99,7 +99,7 @@ entry for the any particular segment, with an identical sequence number.
 11. How much data does the receiver typically acknowledge in an ACK? Can you
 identify cases where the receiver is ACKing every other received segment (see
 Table 3.2 on page 250 in the text).
-
+ 
 Early on, the receiver sends an ACK for every single segment (565, 1460 bytes).
 Later in the trace (roughly frame 60 onwards), the receiver starts sending an
 ACK for every two segments received (2920 bytes).
