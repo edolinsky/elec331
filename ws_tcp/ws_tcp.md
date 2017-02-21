@@ -109,5 +109,28 @@ connection? Explain how you calculated this value.
 
 The total time from the start of transmission (frame 4) to the final TCP ACK
 (frame 206) is (5.651141 - 0.026477) = 5.624664 seconds. The size of the data
-file is 150KB, so the average throughput is
-(150 * 8) / 5.624664 = 213.346077206 Kbits/sec.
+file is 152138 bytes, so the average throughput is
+(152138 * 8 / 1000) / 5.624664 = 216.386969959 Kbits/sec.
+
+13. Use the Time-Sequence-Graph(Stevens) plotting tool to view the sequence
+number versus time plot of segments being sent from the client to the
+gaia.cs.umass.edu server. Can you identify where TCP’s slowstart phase begins
+and ends, and where congestion avoidance takes over? Comment on ways in
+which the measured data differs from the idealized behavior of TCP that we’ve
+studied in the text.
+
+The graph shows that the slowstart phase ends within the first 0.2 seconds. Thus,
+congestion control is almost always on. The theoretical linear increase seems
+not to apply; instead it is transmitting in bursts of 5. This bursting effect
+cannot be the result of flow control, as the advertised threshold is much larger
+than 5 packets.
+
+14. Answer each of two questions above for the trace that you have gathered when
+you transferred a file from your computer to gaia.cs.umass.edu
+
+(2.060510379 - 1.683368957) = 0.377141422 seconds
+((152138/1000) * 8) / 0.377141422 = 3227.18197738 Kbits/sec = 3.23 Mbits/sec
+
+The graph shows almost no sign of slow start, but similar bursts. However, the
+bursts increase in size with each successive burst. Congestion control is also
+on here, and flow control does not take over.
