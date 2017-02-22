@@ -1,0 +1,1 @@
+add_executable(rtp prog2.c)
