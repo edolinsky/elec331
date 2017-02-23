@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <memory.h>
+#include <stdbool.h>
 
 /* ******************************************************************
  ALTERNATING BIT AND GO-BACK-N NETWORK EMULATOR: VERSION 1.1  J.F.Kurose
@@ -18,6 +19,7 @@
 
 #define BIDIRECTIONAL 0    /* change to 1 if you're doing extra credit */
 #define MESSAGE_SIZE 20
+#define TRACE_THRESHOLD 2
 /* and write a routine called B_output */
 
 /* a "msg" is the data unit passed from layer 5 (teachers code) to layer  */
@@ -49,28 +51,47 @@ struct event {
 struct event *evlist = NULL;   /* the event list */
 
 int A_output(struct msg message);
+
 void B_output(struct msg message);
+
 void A_input(struct pkt packet);
+
 void A_timerinterrupt(void);
+
 void A_init(void);
+
 void B_input(struct pkt packet);
+
 void B_timerinterrupt(void);
+
 void B_init(void);
 
-int get_checksum(struct pkt packet);
-void update_checksum(struct pkt packet);
+int get_checksum(struct pkt *packet);
+
+void update_checksum(struct pkt *packet);
+
 int flip_bin(int bin);
+
+int is_corrupt(struct pkt *packet);
 
 void main(void);
 
 void init(void);
+
 float jimsrand(void);
+
 void generate_next_arrival(void);
+
 void insertevent(struct event *p);
+
 void printevlist(void);
+
 void stoptimer(int AorB);
+
 void starttimer(int AorB, float increment);
+
 void tolayer3(int AorB, struct pkt packet);
+
 void tolayer5(int AorB, char datasent[MESSAGE_SIZE]);
 
 
@@ -86,16 +107,23 @@ int B_state = 0;
 int ack = 0;
 int seq = 0;
 
-struct msg prev_msg;
 struct pkt A_prev_pkt;
-struct pkt B_prev_pkt;
-int prev_seq_num;
+struct pkt B_prev_ack;
+
+int TRACE = 1;             /* for my debugging */
 
 /* called from layer 5, passed the data to be sent to other side */
 int A_output(struct msg message) {
     if (A_state) {
+        if (TRACE > TRACE_THRESHOLD) {
+            printf("Trace: A is waiting on ACK %d.\n", A_state);
+        }
         return -1;
     } else {
+        if (TRACE > TRACE_THRESHOLD) {
+            printf("Trace: A sending packet\n");
+        }
+
         struct pkt packet;
 
         // Set seqnum and acknum of our packet
@@ -104,7 +132,7 @@ int A_output(struct msg message) {
 
         // Copy message payload in to packet and compute checksum.
         strcpy(packet.payload, message.data);
-        update_checksum(packet);
+        update_checksum(&packet);
 
         A_prev_pkt = packet;
 
@@ -112,7 +140,7 @@ int A_output(struct msg message) {
         A_state = flip_bin(A_state);
         seq = flip_bin(seq);
 
-        // Send packet to layer 3 and start timer.
+        // Pass message down to layer 3 and start timer.
         tolayer3(A, packet);
         starttimer(A, TIMER_LENGTH);
 
@@ -120,41 +148,106 @@ int A_output(struct msg message) {
     }
 }
 
-/* need be completed only for extra credit */
-void B_output(struct msg message) {
-
-}
-
 /* called from layer 3, when a packet arrives for layer 4 */
 void A_input(struct pkt packet) {
 
+    // Only process if ack matches and packet is not corrupt
+    if (packet.acknum == ack && is_corrupt(&packet)) {
+        if (TRACE > TRACE_THRESHOLD) {
+            printf("Trace: A successfully received ack.\n");
+        }
+
+        stoptimer(A);
+
+        // Copy data payload into message.
+        struct msg message;
+        strcpy(message.data, packet.payload);
+
+        // Flip state and expected ack.
+        ack = flip_bin(ack);
+        A_state = flip_bin(A_state);
+
+        // Pass message up to layer 5.
+        tolayer5(A, message.data);
+    }
 }
 
 /* called when A's timer goes off */
 void A_timerinterrupt(void) {
+    if (TRACE > TRACE_THRESHOLD) {
+        printf("Trace: Retransmitting packet at A.\n");
+    }
 
+    // Re-send packet and reset timer.
+    tolayer3(A, A_prev_pkt);
+    starttimer(A, TIMER_LENGTH);
 }
 
 /* the following routine will be called once (only) before any other */
 /* entity A routines are called. You can use it to do any initialization */
 void A_init(void) {
-
+    A_state = 0;
+    ack = 0;
+    seq = 0;
 }
 
-
 /* Note that with simplex transfer from a-to-B, there is no B_output() */
+/* need be completed only for extra credit */
+void B_output(struct msg message) {
+    //todo: implement
+}
 
 /* called from layer 3, when a packet arrives for layer 4 at B*/
 void B_input(struct pkt packet) {
+
+    // Only accept if sequence number matches state and packet is not corrupted.
+    if (packet.seqnum == B_state && is_corrupt(&packet)) {
+        if (TRACE > TRACE_THRESHOLD) {
+            printf("Trace: B successfully received packet.\n");
+        }
+
+        // Copy payload into message and flip state.
+        struct msg message;
+        strcpy(message.data, packet.payload);
+        B_state = flip_bin(B_state);
+
+        // Construct ack packet.
+        struct pkt ack_pkt;
+        ack_pkt.acknum = packet.seqnum;
+        update_checksum(&ack_pkt);
+
+        // Save this as most recent ack (in case we need to retransmit).
+        B_prev_ack = ack_pkt;
+
+        // Pass message up.
+        tolayer5(B, message.data);
+
+        // Pass ack down to send back to A.
+        tolayer3(B, ack_pkt);
+
+        // Restart timer.
+        stoptimer(B);
+        starttimer(B, TIMER_LENGTH);
+    } else if (TRACE > TRACE_THRESHOLD){
+        printf("Trace: Incorrect Seq or corrupted at B.\n");
+    }
 }
 
 /* called when B's timer goes off */
 void B_timerinterrupt(void) {
+    if (TRACE > TRACE_THRESHOLD) {
+        printf("Trace: Retransmitting packet at B.\n");
+    }
+
+    // Retransmit last ack and reset timer.
+    tolayer3(B, B_prev_ack);
+    starttimer(B, TIMER_LENGTH);
 }
 
 /* the following rouytine will be called once (only) before any other */
 /* entity B routines are called. You can use it to do any initialization */
 void B_init(void) {
+    B_state = 0;
 }
 
 /**
@@ -162,13 +255,13 @@ void B_init(void) {
  * @param packet source packet sum
  * @return sum of all packet elements
  */
-int get_checksum(struct pkt packet) {
+int get_checksum(struct pkt *packet) {
     int checksum = 0;
     int i;
 
-    checksum = packet.acknum + packet.acknum;
+    checksum = packet->acknum + packet->acknum;
     for (i = 0; i < MESSAGE_SIZE; i++) {
-        checksum += (int) packet.payload[i];
+        checksum += (int) packet->payload[i];
     }
 
     return checksum;
@@ -178,8 +271,8 @@ int get_checksum(struct pkt packet) {
  * Calculates and sets the checksum of the given packet
  * @param packet
  */
-void update_checksum(struct pkt packet) {
-    packet.checksum = get_checksum(packet);
+void update_checksum(struct pkt *packet) {
+    packet->checksum = get_checksum(packet);
 }
 
 /**
@@ -197,9 +290,9 @@ int flip_bin(int bin) {
  * @param packet packet struct
  * @return true if reported checksum matches computed checksum
  */
-int is_not_corrupt(struct pkt packet) {
+int is_corrupt(struct pkt *packet) {
     int checksum = get_checksum(packet);
-    return checksum - packet.checksum;
+    return (checksum - packet->checksum) ? false : true;
 }
 
 /*****************************************************************
@@ -225,11 +318,8 @@ to, and you defeinitely should not have to modify
 
 #define  OFF             0
 #define  ON              1
-#define   A    0
-#define   B    1
 
 
-int TRACE = 1;             /* for my debugging */
 int nsim = 0;              /* number of messages from 5 to 4 so far */
 int nsimmax = 0;           /* number of msgs to generate, then stop */
 float time = 0.000;
@@ -277,11 +367,11 @@ void main(void) {
             generate_next_arrival();   /* set up future arrival */
             /* fill in msg to give with string of same letter */
             j = nsim % 26;
-            for (i = 0; i < MESSAGE_SIZE; i++)
+            for (i = 0; i < 20; i++)
                 msg2give.data[i] = 97 + j;
             if (TRACE > 2) {
                 printf("          MAINLOOP: data given to student: ");
-                for (i = 0; i < MESSAGE_SIZE; i++)
+                for (i = 0; i < 20; i++)
                     printf("%c", msg2give.data[i]);
                 printf("\n");
             }
@@ -294,7 +384,7 @@ void main(void) {
             pkt2give.seqnum = eventptr->pktptr->seqnum;
             pkt2give.acknum = eventptr->pktptr->acknum;
             pkt2give.checksum = eventptr->pktptr->checksum;
-            for (i = 0; i < MESSAGE_SIZE; i++)
+            for (i = 0; i < 20; i++)
                 pkt2give.payload[i] = eventptr->pktptr->payload[i];
             if (eventptr->eventity == A)      /* deliver packet by calling */
                 A_input(pkt2give);            /* appropriate entity */
@@ -316,8 +406,9 @@ void main(void) {
     printf(" Simulator terminated at time %f\n after sending %d msgs from layer5\n", time, nsim);
 }
 
-/* initialize the simulator */
-void init(void) {
+
+void init(void)                         /* initialize the simulator */
+{
     int i;
     float sum, avg;
     float jimsrand();
@@ -337,9 +428,8 @@ void init(void) {
 
     srand(9999);              /* init random number generator */
     sum = 0.0;                /* test random number generator for students */
-    for (i = 0; i < 1000; i++) {
+    for (i = 0; i < 1000; i++)
         sum = sum + jimsrand();    /* jimsrand() should be uniform in [0,1] */
-    }
     avg = sum / 1000.0;
     if (avg < 0.25 || avg > 0.75) {
         printf("It is likely that random number generation on your machine\n");
@@ -382,17 +472,15 @@ void generate_next_arrival(void) {
     if (TRACE > 2)
         printf("          GENERATE NEXT ARRIVAL: creating new arrival\n");
 
-    x = lambda * jimsrand() * 2;  // x is uniform on [0,2*lambda]
-
-    // having mean of lambda
+    x = lambda * jimsrand() * 2;  /* x is uniform on [0,2*lambda] */
+    /* having mean of lambda        */
     evptr = (struct event *) malloc(sizeof(struct event));
     evptr->evtime = time + x;
     evptr->evtype = FROM_LAYER5;
-    if (BIDIRECTIONAL && (jimsrand() > 0.5)) {
+    if (BIDIRECTIONAL && (jimsrand() > 0.5))
         evptr->eventity = B;
-    } else {
+    else
         evptr->eventity = A;
-    }
     insertevent(evptr);
 }
 
@@ -410,23 +498,22 @@ void insertevent(struct event *p) {
         p->next = NULL;
         p->prev = NULL;
     } else {
-        for (qold = q; q != NULL && p->evtime > q->evtime; q = q->next) {
+        for (qold = q; q != NULL && p->evtime > q->evtime; q = q->next)
             qold = q;
-            if (q == NULL) {            // end of list
-                qold->next = p;
-                p->prev = qold;
-                p->next = NULL;
-            } else if (q == evlist) {   // front of list
-                p->next = evlist;
-                p->prev = NULL;
-                p->next->prev = p;
-                evlist = p;
-            } else {                    // middle of list
-                p->next = q;
-                p->prev = q->prev;
-                q->prev->next = p;
-                q->prev = p;
-            }
+        if (q == NULL) {   /* end of list */
+            qold->next = p;
+            p->prev = qold;
+            p->next = NULL;
+        } else if (q == evlist) { /* front of list */
+            p->next = evlist;
+            p->prev = NULL;
+            p->next->prev = p;
+            evlist = p;
+        } else {     /* middle of list */
+            p->next = q;
+            p->prev = q->prev;
+            q->prev->next = p;
+            q->prev = p;
         }
     }
 }
@@ -452,46 +539,43 @@ void stoptimer(int AorB) {
 
     if (TRACE > 2)
         printf("          STOP TIMER: stopping timer at %f\n", time);
-
-    for (q = evlist; q != NULL; q = q->next) {
+/* for (q=evlist; q!=NULL && q->next!=NULL; q = q->next)  */
+    for (q = evlist; q != NULL; q = q->next)
         if ((q->evtype == TIMER_INTERRUPT && q->eventity == AorB)) {
-            // remove this event
-            if (q->next == NULL && q->prev == NULL) {
-                evlist = NULL;              // remove first and only event on list
-            } else if (q->next == NULL) {   // end of list - there is one in front
+            /* remove this event */
+            if (q->next == NULL && q->prev == NULL)
+                evlist = NULL;         /* remove first and only event on list */
+            else if (q->next == NULL) /* end of list - there is one in front */
                 q->prev->next = NULL;
-            } else if (q == evlist) {       // front of list - there must be event after
+            else if (q == evlist) { /* front of list - there must be event after */
                 q->next->prev = NULL;
                 evlist = q->next;
-            } else {                        // middle of list
+            } else {     /* middle of list */
                 q->next->prev = q->prev;
                 q->prev->next = q->next;
             }
             free(q);
             return;
         }
-    }
     printf("Warning: unable to cancel your timer. It wasn't running.\n");
 }
 
 
 void starttimer(int AorB, float increment) {
-/* A or B is trying to stop timer */
+
     struct event *q;
     struct event *evptr;
-
     //char *malloc();
 
-    if (TRACE > 2) {
+    if (TRACE > 2)
         printf("          START TIMER: starting timer at %f\n", time);
-    }
-    // be nice: check to see if timer is already started, if so, then  warn
-    for (q = evlist; q != NULL; q = q->next) {
+/* be nice: check to see if timer is already started, if so, then  warn */
+/* for (q=evlist; q!=NULL && q->next!=NULL; q = q->next)  */
+    for (q = evlist; q != NULL; q = q->next)
         if ((q->evtype == TIMER_INTERRUPT && q->eventity == AorB)) {
             printf("Warning: attempt to start a timer that is already started\n");
             return;
         }
-    }
 
 /* create future event for when timer goes off */
     evptr = (struct event *) malloc(sizeof(struct event));
@@ -504,12 +588,9 @@ void starttimer(int AorB, float increment) {
 
 /************************** TOLAYER3 ***************/
 void tolayer3(int AorB, struct pkt packet) {
-/* A or B is trying to stop timer */
     struct pkt *mypktptr;
     struct event *evptr, *q;
-
     //char *malloc();
-
     float lastime, x, jimsrand();
     int i;
 
@@ -524,68 +605,49 @@ void tolayer3(int AorB, struct pkt packet) {
         return;
     }
 
-    /*
-     * make a copy of the packet student just gave me since he/she may decide
-     * to do something with the packet after we return back to him/her
-     */
+/* make a copy of the packet student just gave me since he/she may decide */
+/* to do something with the packet after we return back to him/her */
     mypktptr = (struct pkt *) malloc(sizeof(struct pkt));
-    mypktptr->
-            seqnum = packet.seqnum;
-    mypktptr->
-            acknum = packet.acknum;
-    mypktptr->
-            checksum = packet.checksum;
-    for (i = 0; i < MESSAGE_SIZE; i++) {
+    mypktptr->seqnum = packet.seqnum;
+    mypktptr->acknum = packet.acknum;
+    mypktptr->checksum = packet.checksum;
+    for (i = 0; i < 20; i++)
         mypktptr->payload[i] = packet.payload[i];
-    }
     if (TRACE > 2) {
         printf("          TOLAYER3: seq: %d, ack %d, check: %d ", mypktptr->seqnum,
                mypktptr->acknum, mypktptr->checksum);
-        for (i = 0; i < MESSAGE_SIZE; i++) {
+        for (i = 0; i < 20; i++)
             printf("%c", mypktptr->payload[i]);
-        }
         printf("\n");
     }
 
-    /* create future event for arrival of packet at the other side */
+/* create future event for arrival of packet at the other side */
     evptr = (struct event *) malloc(sizeof(struct event));
-    evptr->
-            evtype = FROM_LAYER3;       // packet will pop out from layer3
-    evptr->
-            eventity = (AorB + 1) % 2;  // event occurs at other entity
-    evptr->
-            pktptr = mypktptr;          // save ptr to my copy of packet
-
-    /*
-     * finally, compute the arrival time of packet at the other end.
-     * medium can not reorder, so make sure packet arrives between 1 and 10
-     * time units after the latest arrival time of packets
-     * currently in the medium on their way to the destination
-     */
+    evptr->evtype = FROM_LAYER3;   /* packet will pop out from layer3 */
+    evptr->eventity = (AorB + 1) % 2; /* event occurs at other entity */
+    evptr->pktptr = mypktptr;       /* save ptr to my copy of packet */
+/* finally, compute the arrival time of packet at the other end.
+   medium can not reorder, so make sure packet arrives between 1 and 10
+   time units after the latest arrival time of packets
+   currently in the medium on their way to the destination */
     lastime = time;
-
-    for (q = evlist; q != NULL; q = q->next) {
-        if ((q->evtype == FROM_LAYER3 && q->eventity == evptr->eventity)) {
+/* for (q=evlist; q!=NULL && q->next!=NULL; q = q->next) */
+    for (q = evlist; q != NULL; q = q->next)
+        if ((q->evtype == FROM_LAYER3 && q->eventity == evptr->eventity))
             lastime = q->evtime;
-        }
-    }
     evptr->evtime = lastime + 1 + 9 * jimsrand();
 
 
 
-    // simulate corruption:
+/* simulate corruption: */
     if (jimsrand() < corruptprob) {
         ncorrupt++;
-        if ((
-                    x = jimsrand()
-            ) < .75)
-            mypktptr->payload[0] = 'Z';   // corrupt payload
+        if ((x = jimsrand()) < .75)
+            mypktptr->payload[0] = 'Z';   /* corrupt payload */
         else if (x < .875)
-            mypktptr->
-                    seqnum = 999999;
+            mypktptr->seqnum = 999999;
         else
-            mypktptr->
-                    acknum = 999999;
+            mypktptr->acknum = 999999;
         if (TRACE > 0)
             printf("          TOLAYER3: packet being corrupted\n");
     }
@@ -599,9 +661,8 @@ void tolayer5(int AorB, char datasent[MESSAGE_SIZE]) {
     int i;
     if (TRACE > 2) {
         printf("          TOLAYER5: data received: ");
-        for (i = 0; i < MESSAGE_SIZE; i++) {
+        for (i = 0; i < 20; i++)
             printf("%c", datasent[i]);
-        }
         printf("\n");
     }
 
