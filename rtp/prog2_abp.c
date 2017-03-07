@@ -72,7 +72,7 @@ void update_checksum(struct pkt *packet);
 
 int flip_bin(int bin);
 
-int is_not_corrupt(struct pkt *packet);
+int is_corrupt(struct pkt *packet);
 
 void main(void);
 
@@ -94,74 +94,58 @@ void tolayer3(int AorB, struct pkt packet);
 
 void tolayer5(int AorB, char datasent[MESSAGE_SIZE]);
 
-int seq_within_window(int base, int seq);
-
-int nsimmax = 0;           /* number of msgs to generate, then stop */
-
 
 /********* STUDENTS WRITE THE NEXT SEVEN ROUTINES *********/
-/********* THIS IS THE GO-BACK-N PROTOCOL VERSION *********/
+/****** THIS IS THE ALTERNATING BIT PROTOCOL VERSION ******/
 
 #define A 0
 #define B 1
-#define W_SIZE 6        // Window Size.
-#define SEQ_SPACE_MAX (2 * W_SIZE)
 #define TIMER_LENGTH 20
 
+int A_state = 0;
+int B_state = 0;
+
+int ack = 0;
+int seq = 0;
+
+struct pkt A_prev_pkt;
+struct pkt B_prev_ack;
 
 int TRACE = 1;             /* for my debugging */
 
-struct pkt buffer[SEQ_SPACE_MAX];
-struct msg *sent_buffer;
-int next_msg;
-int msg_count;
-int sendbase;
-int A_next_seqnum;
-
-int B_expected_seqnum;
-int last_ack;
-
 /* called from layer 5, passed the data to be sent to other side */
 int A_output(struct msg message) {
-    if (seq_within_window(sendbase, A_next_seqnum)) {
+    if (A_state) {
+        if (TRACE > TRACE_THRESHOLD) {
+            printf("Trace: A is waiting on ACK %d.\n", A_state);
+        }
+        return -1;
+    } else {
         if (TRACE > TRACE_THRESHOLD) {
             printf("Trace: A sending packet\n");
         }
 
-        // Add message to buffer.
-        sent_buffer[msg_count] = message;
-        msg_count++;
-
         struct pkt packet;
 
-        // Set seqnum and acknum of our packet.
-        packet.seqnum = A_next_seqnum;
-        packet.acknum = 0;
+        // Set seqnum and acknum of our packet
+        packet.seqnum = seq;
+        packet.acknum = flip_bin(ack);
 
         // Copy message payload in to packet and compute checksum.
         strcpy(packet.payload, message.data);
         update_checksum(&packet);
 
-        // Store packet in window at end of circular buffer.
-        buffer[A_next_seqnum] = packet;
+        A_prev_pkt = packet;
 
-        // Pass message down to layer 3.
+        // Update the state and sequence number.
+        A_state = flip_bin(A_state);
+        seq = flip_bin(seq);
+
+        // Pass message down to layer 3 and start timer.
         tolayer3(A, packet);
-
-        // Start timer if first packet in window.
-        if (A_next_seqnum == sendbase) {
-            starttimer(A, TIMER_LENGTH);
-        }
-
-        // Calculate and set next sequence number.
-        A_next_seqnum = (A_next_seqnum + 1) % SEQ_SPACE_MAX;
+        starttimer(A, TIMER_LENGTH);
 
         return 0;
-    } else {
-        if (TRACE > TRACE_THRESHOLD) {
-            printf("Trace: Send window is full!\n");
-        }
-        return -1;
     }
 }
 
@@ -169,55 +153,23 @@ int A_output(struct msg message) {
 void A_input(struct pkt packet) {
 
     // Only process if ack matches and packet is not corrupt
-    if (is_not_corrupt(&packet) && seq_within_window(sendbase, packet.acknum)) {
+    if (packet.acknum == ack && is_corrupt(&packet)) {
         if (TRACE > TRACE_THRESHOLD) {
             printf("Trace: A successfully received ack.\n");
         }
-        int offset;
 
         stoptimer(A);
 
-        // Account for wraparound.
-        if (packet.acknum < sendbase) {
-            offset = packet.acknum - sendbase + SEQ_SPACE_MAX;
-        } else {
-            offset = packet.acknum - sendbase;
-        }
+        // Copy data payload into message.
+        struct msg message;
+        strcpy(message.data, packet.payload);
 
-        // Update sendbase.
-        sendbase = (packet.acknum + 1) % SEQ_SPACE_MAX;
+        // Flip state and expected ack.
+        ack = flip_bin(ack);
+        A_state = flip_bin(A_state);
 
-        for (int i = 0; i < offset + 1; i++) {
-            if (next_msg < msg_count)
-            {
-
-                // Create data packet.
-                struct pkt new_packet;
-                new_packet.seqnum = A_next_seqnum;
-                new_packet.acknum = 0;
-                memcpy(new_packet.payload, sent_buffer[next_msg].data, sizeof(sent_buffer[next_msg].data));
-                update_checksum(&new_packet);
-
-                // Store packet in packet buffer.
-                buffer[A_next_seqnum] = new_packet;
-
-                // Pass message down.
-                tolayer3(A, new_packet);
-
-                // Update next sequence number.
-                A_next_seqnum = (A_next_seqnum + 1) % SEQ_SPACE_MAX;
-
-                // Update next message index
-                next_msg++;
-            }
-        }
-
-        // If we still have to send packets, set timer.
-        if (sendbase != A_next_seqnum) {
-            starttimer(A, TIMER_LENGTH);
-        }
-    } else if (TRACE > TRACE_THRESHOLD) {
-        printf("Trace: A discarding packet.\n");
+        // Pass message up to layer 5.
+        tolayer5(A, message.data);
     }
 }
 
@@ -227,26 +179,17 @@ void A_timerinterrupt(void) {
         printf("Trace: Retransmitting packet at A.\n");
     }
 
-    // Resend all packets from sendbase to next sequence number.
-    int i = sendbase;
-    while (i != A_next_seqnum) {
-        struct pkt packet = buffer[i];
-        tolayer3(A, packet);
-
-        i = (i + 1) % SEQ_SPACE_MAX;
-    }
-
-    // Start timer once again.
+    // Re-send packet and reset timer.
+    tolayer3(A, A_prev_pkt);
     starttimer(A, TIMER_LENGTH);
 }
 
 /* the following routine will be called once (only) before any other */
 /* entity A routines are called. You can use it to do any initialization */
 void A_init(void) {
-    A_next_seqnum = 0;
-    sendbase = 0;
-    next_msg = 0;
-    sent_buffer = malloc(sizeof(struct msg) * nsimmax);
+    A_state = 0;
+    ack = 0;
+    seq = 0;
 }
 
 /* Note that with simplex transfer from a-to-B, there is no B_output() */
@@ -259,53 +202,53 @@ void B_output(struct msg message) {
 void B_input(struct pkt packet) {
 
     // Only accept if sequence number matches state and packet is not corrupted.
-    if (packet.seqnum == B_expected_seqnum && is_not_corrupt(&packet)) {
+    if (packet.seqnum == B_state && is_corrupt(&packet)) {
         if (TRACE > TRACE_THRESHOLD) {
             printf("Trace: B successfully received packet.\n");
         }
 
-        // Pass message up.
-        tolayer5(B, packet.payload);
+        // Copy payload into message and flip state.
+        struct msg message;
+        strcpy(message.data, packet.payload);
+        B_state = flip_bin(B_state);
 
-        struct pkt new_packet;
-        new_packet.seqnum = 0;
-        new_packet.acknum = packet.seqnum;
-        memcpy(new_packet.payload, packet.payload, sizeof(packet.payload));
-        update_checksum(&new_packet);
+        // Construct ack packet.
+        struct pkt ack_pkt;
+        ack_pkt.acknum = packet.seqnum;
+        update_checksum(&ack_pkt);
+
+        // Save this as most recent ack (in case we need to retransmit).
+        B_prev_ack = ack_pkt;
+
+        // Pass message up.
+        tolayer5(B, message.data);
 
         // Pass ack down to send back to A.
-        tolayer3(B, new_packet);
+        tolayer3(B, ack_pkt);
 
-        last_ack = new_packet.acknum;
-
-        B_expected_seqnum = (B_expected_seqnum + 1) % SEQ_SPACE_MAX;
-    } else {
-        if (TRACE > TRACE_THRESHOLD) {
-            printf("Trace: Incorrect Seq or corrupted at B.\n");
-        }
-
-        // Corrupted or unexpected seqnum. Send ACK with last received sequence number.
-        struct pkt new_packet;
-        new_packet.seqnum = 0;
-        new_packet.acknum = last_ack;
-        memcpy(new_packet.payload, packet.payload, sizeof(packet.payload));
-        update_checksum(&new_packet);
-
-        tolayer3(B, new_packet);
-
+        // Restart timer.
+        stoptimer(B);
+        starttimer(B, TIMER_LENGTH);
+    } else if (TRACE > TRACE_THRESHOLD){
+        printf("Trace: Incorrect Seq or corrupted at B.\n");
     }
 }
 
 /* called when B's timer goes off */
 void B_timerinterrupt(void) {
-    /** Not needed in go-back-n. **/
+    if (TRACE > TRACE_THRESHOLD) {
+        printf("Trace: Retransmitting packet at B.\n");
+    }
+
+    // Retransmit last ack and reset timer.
+    tolayer3(B, B_prev_ack);
+    starttimer(B, TIMER_LENGTH);
 }
 
 /* the following rouytine will be called once (only) before any other */
 /* entity B routines are called. You can use it to do any initialization */
 void B_init(void) {
-    B_expected_seqnum = 0;
-    last_ack = SEQ_SPACE_MAX - 1;
+    B_state = 0;
 }
 
 /**
@@ -348,25 +291,9 @@ int flip_bin(int bin) {
  * @param packet packet struct
  * @return true if reported checksum matches computed checksum
  */
-int is_not_corrupt(struct pkt *packet) {
+int is_corrupt(struct pkt *packet) {
     int checksum = get_checksum(packet);
     return (checksum - packet->checksum) ? false : true;
-}
-
-/**
- * Determines whether seq is within the window starting at base
- * @param base
- * @param seq
- * @return
- */
-int seq_within_window(int base, int seq) {
-
-    // Seq is to the right of base.
-    int r = (seq >= base) && (seq < base + W_SIZE);
-    // Seq is to the left of base.
-    int l = (seq < base) && (seq + SEQ_SPACE_MAX < base + W_SIZE);
-
-    return l || r;
 }
 
 /*****************************************************************
@@ -395,6 +322,7 @@ to, and you defeinitely should not have to modify
 
 
 int nsim = 0;              /* number of messages from 5 to 4 so far */
+int nsimmax = 0;           /* number of msgs to generate, then stop */
 float time = 0.000;
 float lossprob;            /* probability that a packet is dropped  */
 float corruptprob;         /* probability that one bit is packet is flipped */
